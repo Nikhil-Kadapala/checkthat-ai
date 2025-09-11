@@ -50,6 +50,9 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+test_*.py
+*_test.py
+tests/
 
 # Translations
 *.mo
@@ -70,6 +73,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+site/
 
 # PyBuilder
 .pybuilder/
@@ -143,6 +147,11 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.env.local
+.env.production
+.env.development
+*.key
+secrets.json
 
 # Spyder project settings
 .spyderproject
@@ -153,6 +162,9 @@ venv.bak/
 
 # mkdocs documentation
 /site
+
+# Pytest
+.pytest_cache/
 
 # mypy
 .mypy_cache/
@@ -198,10 +210,22 @@ cython_debug/
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .cursorignore
 .cursorindexingignore
+.cursorrules
+.cursor/
 
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# OS
+.DS_Store
+Thumbs.db
