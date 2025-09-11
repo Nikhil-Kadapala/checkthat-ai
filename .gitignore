@@ -119,6 +119,7 @@ dmypy.json
 *.swp
 *.swo
 *~
+.cursor/rules
 
 # OS
 .DS_Store
