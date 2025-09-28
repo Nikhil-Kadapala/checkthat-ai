@@ -1,5 +1,6 @@
 include README.md
 include LICENSE
+include CHANGELOG.md
 recursive-include checkthat_ai *.py
 recursive-exclude checkthat_ai *.pyc
 recursive-exclude checkthat_ai __pycache__

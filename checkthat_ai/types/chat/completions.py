@@ -1,67 +1,175 @@
-"""
-Type definitions for chat completions.
-"""
+from typing import Optional, List, Dict, Any, Union, Literal, TypeVar
+from pydantic import BaseModel, Field
+from enum import Enum
+from openai.types.chat import ChatCompletion
+from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
-from typing import Optional, List, Dict, Any, Union, Literal
-from pydantic import BaseModel
-
-
-class ChatCompletionMessageParam(BaseModel):
-    """Parameters for a chat completion message."""
-    role: Literal["system", "user", "assistant", "tool"]
-    content: Union[str, List[Dict[str, Any]]]
-    name: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    tool_call_id: Optional[str] = None
+# Type variable for response format matching OpenAI's pattern
+ResponseFormatT = TypeVar("ResponseFormatT")
 
 
-class ChatCompletionCreateParams(BaseModel):
-    """Parameters for creating a chat completion."""
-    messages: List[ChatCompletionMessageParam]
-    model: Union[str, Any]  # ChatModel type
-    frequency_penalty: Optional[float] = None
-    logit_bias: Optional[Dict[str, int]] = None
-    logprobs: Optional[bool] = None
-    max_tokens: Optional[int] = None
-    n: Optional[int] = None
-    presence_penalty: Optional[float] = None
-    response_format: Optional[Dict[str, Any]] = None
-    seed: Optional[int] = None
-    stop: Optional[Union[str, List[str]]] = None
-    stream: Optional[bool] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    user: Optional[str] = None
+class EvaluationReport(BaseModel):
+    """Structured report of evaluation metrics applied to the model's output.
 
-    # CheckThat AI specific parameters
-    refine_claims: Optional[bool] = None
-    post_norm_eval_metrics: Optional[List[str]] = None
-    save_eval_report: Optional[bool] = None
-    checkthat_api_key: Optional[str] = None
+    Args:
+        metrics_used (List[str]): The evaluation metrics that were applied
+        scores (Dict[str, float]): Scores for each metric (0.0 to 1.0 scale)
+        detailed_results (Dict[str, Dict[str, Any]]): Detailed results for each metric
+        timestamp (str): ISO timestamp when the evaluation was performed
+        report_url (Optional[str]): URL to the full evaluation report if saved to cloud
+        model_info (Optional[Dict[str, Any]]): Information about the model used
+    Example:
+        ```python   
+        report = EvaluationReport(
+            metrics_used=["accuracy", "f1_score"],  
+            scores={"accuracy": 0.95, "f1_score": 0.92},
+            detailed_results={
+                "accuracy": {"true_positives": 95, "false_positives": 5, "true_negatives": 90, "false_negatives": 10},
+                "f1_score": {"precision": 0.94, "recall": 0.90}
+            },
+            timestamp="2024-08-01T12:00:00Z",
+            report_url="https://example.com/evaluation/report/12345",
+            model_info={"name": "gpt-4o", "version": "2024-08-06"}
+        )
+    """
+    metrics_used: List[str] = Field(description="The evaluation metrics that were applied")
+    scores: Dict[str, float] = Field(description="Scores for each metric (0.0 to 1.0 scale)")
+    detailed_results: Dict[str, Dict[str, Any]] = Field(description="Detailed results for each metric")
+    timestamp: str = Field(description="ISO timestamp when the evaluation was performed")
+    report_url: Optional[str] = Field(default=None, description="URL to the full evaluation report if saved to cloud")
+    model_info: Optional[Dict[str, Any]] = Field(default=None, description="Information about the model used")
+
+class ClaimType(str, Enum):
+    ORIGINAL = "original"
+    REFINED = "refined"
+    FINAL = "final"
+
+class RefinementHistory(BaseModel):
+    """History entry for claim refinement process.
+
+    Args:
+        claim_type (ClaimType): The type of claim
+        claim (Optional[str], optional): The claim. Defaults to None.
+        score (float): Score for the claim (0.0 to 1.0 scale)
+        feedback (Optional[str], optional): The feedback from the refinement. Defaults to None.
+        
+    Example:
+        ```python
+        history_entry = RefinementHistory(
+            claim_type=ClaimType.REFINED,
+            claim="The refined claim text.",
+            score=0.85,
+            feedback="Improved clarity and specificity."
+        )
+        ```
+    """
+    claim_type: ClaimType = Field(description="The type of claim")
+    claim: Optional[str] = Field(default=None, description="The claim")
+    score: float = Field(description="Score for the claim (0.0 to 1.0 scale)")
+    feedback: Optional[str] = Field(default=None, description="The feedback from the refinement")
+class RefinementMetadata(BaseModel):
+    """
+    Metadata about the claim refinement process.
+    Args:
+        metric_used (Optional[str]): The metric that was used for refinement
+        threshold (Optional[float]): The threshold that was used for refinement
+        refinement_model (Optional[str]): The model that was used for refinement
+        refinement_history (List[RefinementHistory]): History of the refinement process
+    Example:
+        ```python
+        metadata = RefinementMetadata(
+            metric_used="f1_score",
+            threshold=0.85, 
+            refinement_model="gpt-4o",
+            refinement_history=[
+                RefinementHistory(  
+                    claim_type=ClaimType.ORIGINAL,
+                    claim="The original claim text.",
+                    score=0.75,
+                    feedback=None
+                ),
+                RefinementHistory(
+                    claim_type=ClaimType.REFINED,
+                    claim="The refined claim text.",
+                    score=0.85,
+                    feedback="Improved clarity and specificity."
+                )
+            ]
+        )
+        ```
+    """
+    metric_used: Optional[str] = Field(default=None, description="The metric that was used for refinement")
+    threshold: Optional[float] = Field(default=None, description="The threshold that was used for refinement")
+    refinement_model: Optional[str] = Field(default=None, description="The model that was used for refinement")
+    refinement_history: List[RefinementHistory] = Field(description="History of the refinement process")
 
 
-class ChatCompletionChoice(BaseModel):
-    """A choice in a chat completion response."""
-    finish_reason: Optional[str]
-    index: int
-    message: Dict[str, Any]
-    logprobs: Optional[Dict[str, Any]] = None
+class CheckThatChatCompletion(ChatCompletion):
+    """
+    Extended ChatCompletion with CheckThat AI evaluation and refinement data.
+    Args:
+        evaluation_report (Optional[EvaluationReport]): Post-normalization evaluation results when requested
+        refinement_metadata (Optional[RefinementMetadata]): Metadata about claim refinement process when applied
+        checkthat_metadata (Optional[Dict[str, Any]]): Additional CheckThat AI-specific metadata
+    Example:
+        ```python
+        response = CheckThatChatCompletion(
+            id="chatcmpl-...",
+            object="chat.completion",
+            created=1691234567,
+            model="gpt-4o-2024-08-06",
+            choices=[...],
+            usage={...},
+            evaluation_report=EvaluationReport(...),
+            refinement_metadata=RefinementMetadata(...),
+            checkthat_metadata={"custom_key": "custom_value"}
+        )
+    """
+    evaluation_report: Optional[EvaluationReport] = Field(
+        default=None,
+        description="Post-normalization evaluation results when requested"
+    )
+    refinement_metadata: Optional[RefinementMetadata] = Field(
+        default=None,
+        description="Metadata about claim refinement process when applied"
+    )
+    checkthat_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional CheckThat AI-specific metadata"
+    )
 
 
-class ChatCompletionUsage(BaseModel):
-    """Usage information for a chat completion."""
-    completion_tokens: int
-    prompt_tokens: int
-    total_tokens: int
-
-
-class ChatCompletion(BaseModel):
-    """A chat completion response."""
-    id: str
-    choices: List[ChatCompletionChoice]
-    created: int
-    model: str
-    object: str = "chat.completion"
-    service_tier: Optional[str] = None
-    system_fingerprint: Optional[str] = None
-    usage: ChatCompletionUsage
+class CheckThatParsedChatCompletion(ParsedChatCompletion[ResponseFormatT]):
+    """
+    Extended ParsedChatCompletion with CheckThat AI evaluation and refinement data.
+    Args:
+        evaluation_report (Optional[EvaluationReport]): Post-normalization evaluation results when requested
+        refinement_metadata (Optional[RefinementMetadata]): Metadata about claim refinement process when applied
+        checkthat_metadata (Optional[Dict[str, Any]]): Additional CheckThat AI-specific metadata
+    Example:
+        ```python
+        response = CheckThatParsedChatCompletion(
+            id="chatcmpl-...",
+            object="chat.completion",
+            created=1691234567,
+            model="gpt-4o-2024-08-06",
+            choices=[...],
+            usage={...},
+            parsed=[...],
+            evaluation_report=EvaluationReport(...),
+            refinement_metadata=RefinementMetadata(...),
+            checkthat_metadata={"custom_key": "custom_value"}
+        )
+    """
+    evaluation_report: Optional[EvaluationReport] = Field(
+        default=None,
+        description="Post-normalization evaluation results when requested"
+    )
+    refinement_metadata: Optional[RefinementMetadata] = Field(
+        default=None,
+        description="Metadata about claim refinement process when applied"
+    )
+    checkthat_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional CheckThat AI-specific metadata"
+    )
