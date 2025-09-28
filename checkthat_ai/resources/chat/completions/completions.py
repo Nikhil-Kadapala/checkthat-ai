@@ -982,5 +982,4 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
             # we turn the `CheckThatChatCompletion` instance into a `CheckThatParsedChatCompletion`
             # in the `parser` function above
             cast_to=cast(Type[CheckThatParsedChatCompletion[ResponseFormatT]], CheckThatChatCompletion),
-            stream=False,
         )
