@@ -774,8 +774,7 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         # Validate streaming mode constraints
         if stream and (refine_claims):
             features = []
-            if refine_claims:
-                features.append("refine_claims")
+            features.append("refine_claims")
 
             raise ValueError(
                 f"CheckThat AI features ({', '.join(features)}) are not supported in streaming mode. "
