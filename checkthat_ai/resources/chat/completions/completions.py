@@ -757,7 +757,7 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, CheckThatChatCompletion, AsyncStream[ChatCompletionChunk]]:
+    ) -> Union[CheckThatChatCompletion, AsyncStream[ChatCompletionChunk]]:
         """
         Async version of create with enhanced CheckThat AI features.
         See ChatCompletions.create() for detailed documentation.
