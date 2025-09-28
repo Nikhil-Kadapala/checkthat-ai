@@ -13,13 +13,12 @@ from .resources.chat import Chat
 from .resources.chat import AsyncChat
 from .resources.models import Models
 from .resources.models import AsyncModels
-from ._types import FactCheckResponse, ClaimNormalizationResponse
 
 log: logging.Logger = logging.getLogger(__name__)
 
 class CheckThatAI(OpenAI):
     f"""
-    CheckThat AI Python SDK - OpenAI Compatible Client
+    CheckThat AI Python SDK - OpenAI Compatible API Client
 
     This SDK provides an OpenAI-compatible interface for accessing multiple LLM providers
     through a unified API. An API key is always required for authentication.
@@ -79,22 +78,6 @@ class CheckThatAI(OpenAI):
         self.chat = Chat(self)
         self.models = Models(self)
         log.info("CheckThatAI client initialized")
-
-    def fact_check(self, content: str, **kwargs) -> FactCheckResponse:
-        """
-        Custom fact-checking method.
-        """
-        # TODO: Implement actual fact-checking logic
-        log.info("Performing fact-check for: %s", content)
-        return FactCheckResponse()
-
-    def normalize_claims(self, text: str, **kwargs) -> ClaimNormalizationResponse:
-        """
-        Custom claim normalization method.
-        """
-        # TODO: Implement actual claim normalization logic
-        log.info("Normalizing claims for: %s", text)
-        return ClaimNormalizationResponse()
 
 
 class AsyncCheckThatAI(AsyncOpenAI):
@@ -159,19 +142,3 @@ class AsyncCheckThatAI(AsyncOpenAI):
         self.chat = AsyncChat(self)
         self.models = AsyncModels(self)
         log.info("AsyncCheckThatAI client initialized")
-
-    async def fact_check(self, content: str, **kwargs) -> FactCheckResponse:
-        """
-        Custom fact-checking method.
-        """
-        # TODO: Implement actual fact-checking logic
-        log.info("Performing fact-check for: %s", content)
-        return FactCheckResponse()
-
-    async def normalize_claims(self, text: str, **kwargs) -> ClaimNormalizationResponse:
-        """
-        Custom claim normalization method.
-        """
-        # TODO: Implement actual claim normalization logic
-        log.info("Normalizing claims for: %s", text)
-        return ClaimNormalizationResponse()
