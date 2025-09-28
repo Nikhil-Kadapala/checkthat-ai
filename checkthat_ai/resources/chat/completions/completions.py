@@ -20,7 +20,15 @@ from openai.types.shared.reasoning_effort import ReasoningEffort
 from openai.types.chat import completion_create_params
 from openai._utils import maybe_transform, async_maybe_transform, required_args
 from openai._base_client import make_request_options
-from ...._types import EvaluationMetric, AVAILABLE_EVAL_METRICS
+from ...._types import (
+    AVAILABLE_EVAL_METRICS,
+    validate_model,
+    validate_response_format_for_structured_output
+)
+from ....types.chat.completions import (
+    CheckThatChatCompletion,
+    CheckThatParsedChatCompletion,
+)
 
 # Type variable for response format matching OpenAI's pattern
 ResponseFormatT = TypeVar("ResponseFormatT")
@@ -73,9 +81,11 @@ class ChatCompletions(OpenAIChatCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -125,9 +135,11 @@ class ChatCompletions(OpenAIChatCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -135,7 +147,7 @@ class ChatCompletions(OpenAIChatCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> ChatCompletion:
+    ) -> CheckThatChatCompletion:
         ...
 
     @overload
@@ -177,9 +189,11 @@ class ChatCompletions(OpenAIChatCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -187,7 +201,7 @@ class ChatCompletions(OpenAIChatCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]:
+    ) -> Union[CheckThatChatCompletion, Stream[ChatCompletionChunk]]:
         ...
 
     @required_args(["messages", "model"], ["messages", "model", "stream"])
@@ -229,9 +243,11 @@ class ChatCompletions(OpenAIChatCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -239,7 +255,7 @@ class ChatCompletions(OpenAIChatCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, Stream[ChatCompletionChunk]]:
+    ) -> Union[ChatCompletion, CheckThatChatCompletion, Stream[ChatCompletionChunk]]:
         """
         Create a chat completion with enhanced CheckThat AI features.
 
@@ -250,9 +266,9 @@ class ChatCompletions(OpenAIChatCompletions):
             messages: List of messages for the conversation
             model: The model to use for the completion
             response_format: Optional. For structured output, pass a JSON schema format
-            stream: Whether to stream the response
-            refine_claims: If True, enables backend claim refinement and normalization
-            post_norm_eval_metrics: List of metrics for quality evaluation
+            stream: Whether to stream the response (Note: CheckThat AI features not supported with streaming)
+            refine_claims: If True, enables an iterative refinement step before final normalization (not compatible with streaming)
+            post_norm_eval_metrics: List of metrics for quality evaluation (not compatible with streaming)
             save_eval_report: If True, saves the evaluation report
             checkthat_api_key: API key for CheckThat AI services
             **kwargs: Additional parameters passed to the underlying OpenAI API
@@ -260,27 +276,39 @@ class ChatCompletions(OpenAIChatCompletions):
         Returns:
             ChatCompletion or Stream[ChatCompletionChunk] depending on stream parameter
         """
-        # Validate evaluation metrics if provided
-        if post_norm_eval_metrics:
-            invalid_metrics = [m for m in post_norm_eval_metrics if m not in AVAILABLE_EVAL_METRICS]
-            if invalid_metrics:
-                raise ValueError(
-                    f"Invalid evaluation metrics: {invalid_metrics}. "
-                    f"Available metrics: {AVAILABLE_EVAL_METRICS}"
-                )
+        # Validate model
+        validate_model(model, self._client)
 
+        # Validate response format for structured output compatibility
+        validate_response_format_for_structured_output(response_format, model, stream)
+
+        # Validate response format (OpenAI's validation)
         validate_response_format(response_format)
 
-        # Add CheckThat AI parameters to extra_body
-        if extra_body is None:
-            extra_body = {}
-        if isinstance(extra_body, dict):
-            extra_body.update({
-                'refine_claims': refine_claims,
-                'post_norm_eval_metrics': post_norm_eval_metrics,
-                'save_eval_report': save_eval_report,
-                'checkthat_api_key': checkthat_api_key
-            })
+        # Validate streaming mode constraints
+        if stream and (refine_claims):
+            features = []
+            if refine_claims:
+                features.append("refine_claims")
+
+            raise ValueError(
+                f"CheckThat AI features ({', '.join(features)}) are not supported in streaming mode. "
+                "Please set stream=False to use these features."
+            )
+
+        # Add CheckThat AI parameters to extra_body (only when not streaming)
+        if not stream:
+            if extra_body is None:
+                extra_body = {}
+            if isinstance(extra_body, dict):
+                extra_body.update({
+                    "refine_claims": refine_claims,
+                    "refine_model": refine_model,
+                    "refine_threshold": refine_threshold,
+                    "refine_max_iters": refine_max_iters,
+                    "refine_metrics": refine_metrics,
+                    "checkthat_api_key": checkthat_api_key
+                })
 
         return self._post(
             "/chat/completions",
@@ -328,7 +356,7 @@ class ChatCompletions(OpenAIChatCompletions):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ChatCompletion,
+            cast_to=CheckThatChatCompletion if not stream else ChatCompletion,
             stream=stream or False,
             stream_cls=Stream[ChatCompletionChunk],
         )
@@ -370,9 +398,11 @@ class ChatCompletions(OpenAIChatCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -380,10 +410,10 @@ class ChatCompletions(OpenAIChatCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> ParsedChatCompletion[ResponseFormatT]:
+    ) -> CheckThatParsedChatCompletion[ResponseFormatT]:
         """
         Wrapper over the `client.chat.completions.create()` method that provides richer integrations with Python specific types
-        & returns a `ParsedChatCompletion` object, which is a subclass of the standard `ChatCompletion` class.
+        & returns a `CheckThatParsedChatCompletion` object, which extends the standard `ParsedChatCompletion` class with evaluation data.
 
         You can pass a pydantic model to this method and it will automatically convert the model
         into a JSON schema, send it to the API and parse the response content back into the given model.
@@ -430,15 +460,6 @@ class ChatCompletions(OpenAIChatCompletions):
         - `save_eval_report`: Save evaluation reports (requires checkthat_api_key for cloud storage)
         - `checkthat_api_key`: API key for CheckThat AI advanced features
         """
-        # Validate evaluation metrics if provided
-        if post_norm_eval_metrics:
-            invalid_metrics = [m for m in post_norm_eval_metrics if m not in AVAILABLE_EVAL_METRICS]
-            if invalid_metrics:
-                raise ValueError(
-                    f"Invalid evaluation metrics: {invalid_metrics}. "
-                    f"Available metrics: {AVAILABLE_EVAL_METRICS}"
-                )
-
         chat_completion_tools = _validate_input_tools(tools)
 
         extra_headers = {
@@ -452,16 +473,24 @@ class ChatCompletions(OpenAIChatCompletions):
         if isinstance(extra_body, dict):
             extra_body.update({
                 'refine_claims': refine_claims,
-                'post_norm_eval_metrics': post_norm_eval_metrics,
-                'save_eval_report': save_eval_report,
+                'refine_model': refine_model,
+                'refine_threshold': refine_threshold,
+                'refine_max_iters': refine_max_iters,
+                'refine_metrics': refine_metrics,
                 'checkthat_api_key': checkthat_api_key
             })
 
-        def parser(raw_completion: ChatCompletion) -> ParsedChatCompletion[ResponseFormatT]:
-            return _parse_chat_completion(
+        def parser(raw_completion: CheckThatChatCompletion) -> CheckThatParsedChatCompletion[ResponseFormatT]:
+            parsed = _parse_chat_completion(
                 response_format=response_format,
                 chat_completion=raw_completion,
                 input_tools=chat_completion_tools,
+            )
+            return CheckThatParsedChatCompletion(
+                **parsed.model_dump(),
+                evaluation_report=raw_completion.evaluation_report,
+                refinement_metadata=raw_completion.refinement_metadata,
+                checkthat_metadata=raw_completion.checkthat_metadata,
             )
 
         return self._post(
@@ -512,10 +541,9 @@ class ChatCompletions(OpenAIChatCompletions):
                 timeout=timeout,
                 post_parser=parser,
             ),
-            # we turn the `ChatCompletion` instance into a `ParsedChatCompletion`
+            # we turn the `CheckThatChatCompletion` instance into a `CheckThatParsedChatCompletion`
             # in the `parser` function above
-            cast_to=cast(Type[ParsedChatCompletion[ResponseFormatT]], ChatCompletion),
-            stream=False,
+            cast_to=cast(Type[CheckThatParsedChatCompletion[ResponseFormatT]], CheckThatChatCompletion),
         )
 
 
@@ -559,9 +587,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -611,9 +641,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -621,7 +653,7 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> ChatCompletion:
+    ) -> CheckThatChatCompletion:
         ...
 
     @overload
@@ -663,9 +695,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -673,7 +707,7 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]:
+    ) -> Union[CheckThatChatCompletion, AsyncStream[ChatCompletionChunk]]:
         ...
 
     @required_args(["messages", "model"], ["messages", "model", "stream"])
@@ -715,9 +749,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -725,32 +761,44 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, AsyncStream[ChatCompletionChunk]]:
+    ) -> Union[ChatCompletion, CheckThatChatCompletion, AsyncStream[ChatCompletionChunk]]:
         """
         Async version of create with enhanced CheckThat AI features.
         See ChatCompletions.create() for detailed documentation.
         """
-        # Validate evaluation metrics if provided
-        if post_norm_eval_metrics:
-            invalid_metrics = [m for m in post_norm_eval_metrics if m not in AVAILABLE_EVAL_METRICS]
-            if invalid_metrics:
-                raise ValueError(
-                    f"Invalid evaluation metrics: {invalid_metrics}. "
-                    f"Available metrics: {AVAILABLE_EVAL_METRICS}"
-                )
+        # Validate model
+        validate_model(model, self._client)
 
+        # Validate response format for structured output compatibility
+        validate_response_format_for_structured_output(response_format, model, stream)
+
+        # Validate response format (OpenAI's validation)
         validate_response_format(response_format)
 
-        # Add CheckThat AI parameters to extra_body
-        if extra_body is None:
-            extra_body = {}
-        if isinstance(extra_body, dict):
-            extra_body.update({
-                'refine_claims': refine_claims,
-                'post_norm_eval_metrics': post_norm_eval_metrics,
-                'save_eval_report': save_eval_report,
-                'checkthat_api_key': checkthat_api_key
-            })
+        # Validate streaming mode constraints
+        if stream and (refine_claims):
+            features = []
+            if refine_claims:
+                features.append("refine_claims")
+
+            raise ValueError(
+                f"CheckThat AI features ({', '.join(features)}) are not supported in streaming mode. "
+                "Please set stream=False to use these features."
+            )
+
+        # Add CheckThat AI parameters to extra_body (only when not streaming)
+        if not stream:
+            if extra_body is None:
+                extra_body = {}
+            if isinstance(extra_body, dict):
+                extra_body.update({
+                    "refine_claims": refine_claims,
+                    "refine_model": refine_model,
+                    "refine_threshold": refine_threshold,
+                    "refine_max_iters": refine_max_iters,
+                    "refine_metrics": refine_metrics,
+                    "checkthat_api_key": checkthat_api_key
+                })
 
         return await self._post(
             "/chat/completions",
@@ -798,7 +846,7 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
             options=make_request_options(
                 extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
             ),
-            cast_to=ChatCompletion,
+            cast_to=CheckThatChatCompletion if not stream else ChatCompletion,
             stream=stream or False,
             stream_cls=AsyncStream[ChatCompletionChunk],
         )
@@ -840,9 +888,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         verbosity: Optional[Literal["low", "medium", "high"]] | NotGiven = NOT_GIVEN,
         web_search_options: completion_create_params.WebSearchOptions | NotGiven = NOT_GIVEN,
         # CheckThat AI custom parameters
-        refine_claims: bool = False,
-        post_norm_eval_metrics: Optional[List[str]] = None,
-        save_eval_report: Optional[bool] = None,
+        refine_claims: Optional[bool] = False,
+        refine_model: Optional[str] = None,
+        refine_threshold: Optional[float] = 0.5,
+        refine_max_iters: Optional[int] = 3,
+        refine_metrics: Optional[Any] = None,
         checkthat_api_key: Optional[str] = None,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -850,19 +900,11 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> ParsedChatCompletion[ResponseFormatT]:
+    ) -> CheckThatParsedChatCompletion[ResponseFormatT]:
         """
         Async version of parse with structured output parsing and enhanced CheckThat AI features.
         See ChatCompletions.parse() for detailed documentation.
         """
-        # Validate evaluation metrics if provided
-        if post_norm_eval_metrics:
-            invalid_metrics = [m for m in post_norm_eval_metrics if m not in AVAILABLE_EVAL_METRICS]
-            if invalid_metrics:
-                raise ValueError(
-                    f"Invalid evaluation metrics: {invalid_metrics}. "
-                    f"Available metrics: {AVAILABLE_EVAL_METRICS}"
-                )
 
         _validate_input_tools(tools)
 
@@ -877,16 +919,24 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
         if isinstance(extra_body, dict):
             extra_body.update({
                 'refine_claims': refine_claims,
-                'post_norm_eval_metrics': post_norm_eval_metrics,
-                'save_eval_report': save_eval_report,
+                'refine_model': refine_model,
+                'refine_threshold': refine_threshold,
+                'refine_max_iters': refine_max_iters,
+                'refine_metrics': refine_metrics,
                 'checkthat_api_key': checkthat_api_key
             })
 
-        def parser(raw_completion: ChatCompletion) -> ParsedChatCompletion[ResponseFormatT]:
-            return _parse_chat_completion(
+        def parser(raw_completion: CheckThatChatCompletion) -> CheckThatParsedChatCompletion[ResponseFormatT]:
+            parsed = _parse_chat_completion(
                 response_format=response_format,
                 chat_completion=raw_completion,
                 input_tools=tools,
+            )
+            return CheckThatParsedChatCompletion(
+                **parsed.model_dump(),
+                evaluation_report=raw_completion.evaluation_report,
+                refinement_metadata=raw_completion.refinement_metadata,
+                checkthat_metadata=raw_completion.checkthat_metadata,
             )
 
         return await self._post(
@@ -937,8 +987,8 @@ class AsyncChatCompletions(OpenAIAsyncCompletions):
                 timeout=timeout,
                 post_parser=parser,
             ),
-            # we turn the `ChatCompletion` instance into a `ParsedChatCompletion`
+            # we turn the `CheckThatChatCompletion` instance into a `CheckThatParsedChatCompletion`
             # in the `parser` function above
-            cast_to=cast(Type[ParsedChatCompletion[ResponseFormatT]], ChatCompletion),
+            cast_to=cast(Type[CheckThatParsedChatCompletion[ResponseFormatT]], CheckThatChatCompletion),
             stream=False,
         )
