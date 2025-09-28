@@ -255,7 +255,7 @@ class ChatCompletions(OpenAIChatCompletions):
         extra_query: Query | None = None,
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = NOT_GIVEN,
-    ) -> Union[ChatCompletion, CheckThatChatCompletion, Stream[ChatCompletionChunk]]:
+    ) -> Union[CheckThatChatCompletion, Stream[ChatCompletionChunk]]:
         """
         Create a chat completion with enhanced CheckThat AI features.
 
