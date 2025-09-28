@@ -1,67 +1,66 @@
-"""
-Type definitions for chat completions.
-"""
+from typing import Optional, List, Dict, Any, Union, Literal, TypeVar
+from pydantic import BaseModel, Field
+from enum import Enum
+from openai.types.chat import ChatCompletion
+from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
-from typing import Optional, List, Dict, Any, Union, Literal
-from pydantic import BaseModel
-
-
-class ChatCompletionMessageParam(BaseModel):
-    """Parameters for a chat completion message."""
-    role: Literal["system", "user", "assistant", "tool"]
-    content: Union[str, List[Dict[str, Any]]]
-    name: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    tool_call_id: Optional[str] = None
+# Type variable for response format matching OpenAI's pattern
+ResponseFormatT = TypeVar("ResponseFormatT")
 
 
-class ChatCompletionCreateParams(BaseModel):
-    """Parameters for creating a chat completion."""
-    messages: List[ChatCompletionMessageParam]
-    model: Union[str, Any]  # ChatModel type
-    frequency_penalty: Optional[float] = None
-    logit_bias: Optional[Dict[str, int]] = None
-    logprobs: Optional[bool] = None
-    max_tokens: Optional[int] = None
-    n: Optional[int] = None
-    presence_penalty: Optional[float] = None
-    response_format: Optional[Dict[str, Any]] = None
-    seed: Optional[int] = None
-    stop: Optional[Union[str, List[str]]] = None
-    stream: Optional[bool] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    user: Optional[str] = None
+class EvaluationReport(BaseModel):
+    """Evaluation report for post-normalization quality audits."""
+    metrics_used: List[str] = Field(description="The evaluation metrics that were applied")
+    scores: Dict[str, float] = Field(description="Scores for each metric (0.0 to 1.0 scale)")
+    detailed_results: Dict[str, Dict[str, Any]] = Field(description="Detailed results for each metric")
+    timestamp: str = Field(description="ISO timestamp when the evaluation was performed")
+    report_url: Optional[str] = Field(default=None, description="URL to the full evaluation report if saved to cloud")
+    model_info: Optional[Dict[str, Any]] = Field(default=None, description="Information about the model used")
 
-    # CheckThat AI specific parameters
-    refine_claims: Optional[bool] = None
-    post_norm_eval_metrics: Optional[List[str]] = None
-    save_eval_report: Optional[bool] = None
-    checkthat_api_key: Optional[str] = None
-
-
-class ChatCompletionChoice(BaseModel):
-    """A choice in a chat completion response."""
-    finish_reason: Optional[str]
-    index: int
-    message: Dict[str, Any]
-    logprobs: Optional[Dict[str, Any]] = None
+class ClaimType(str, Enum):
+    ORIGINAL = "original"
+    REFINED = "refined"
+    FINAL = "final"
+class RefinementHistory(BaseModel):
+    claim_type: ClaimType = Field(description="The type of claim")
+    claim: Optional[str] = Field(default=None, description="The claim")
+    score: float = Field(description="Score for the claim (0.0 to 1.0 scale)")
+    feedback: Optional[str] = Field(default=None, description="The feedback from the refinement")
+class RefinementMetadata(BaseModel):
+    """Metadata about the claim refinement process."""
+    metric_used: Optional[str] = Field(default=None, description="The metric that was used for refinement")
+    threshold: Optional[float] = Field(default=None, description="The threshold that was used for refinement")
+    refinement_model: Optional[str] = Field(default=None, description="The model that was used for refinement")
+    refinement_history: List[RefinementHistory] = Field(description="History of the refinement process")
 
 
-class ChatCompletionUsage(BaseModel):
-    """Usage information for a chat completion."""
-    completion_tokens: int
-    prompt_tokens: int
-    total_tokens: int
+class CheckThatChatCompletion(ChatCompletion):
+    """Extended ChatCompletion with CheckThat AI evaluation and refinement data."""
+    evaluation_report: Optional[EvaluationReport] = Field(
+        default=None,
+        description="Post-normalization evaluation results when requested"
+    )
+    refinement_metadata: Optional[RefinementMetadata] = Field(
+        default=None,
+        description="Metadata about claim refinement process when applied"
+    )
+    checkthat_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional CheckThat AI-specific metadata"
+    )
 
 
-class ChatCompletion(BaseModel):
-    """A chat completion response."""
-    id: str
-    choices: List[ChatCompletionChoice]
-    created: int
-    model: str
-    object: str = "chat.completion"
-    service_tier: Optional[str] = None
-    system_fingerprint: Optional[str] = None
-    usage: ChatCompletionUsage
+class CheckThatParsedChatCompletion(ParsedChatCompletion[ResponseFormatT]):
+    """Extended ParsedChatCompletion with CheckThat AI evaluation and refinement data."""
+    evaluation_report: Optional[EvaluationReport] = Field(
+        default=None,
+        description="Post-normalization evaluation results when requested"
+    )
+    refinement_metadata: Optional[RefinementMetadata] = Field(
+        default=None,
+        description="Metadata about claim refinement process when applied"
+    )
+    checkthat_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional CheckThat AI-specific metadata"
+    )
